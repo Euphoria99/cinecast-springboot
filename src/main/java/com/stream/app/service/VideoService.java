@@ -10,7 +10,7 @@ import java.util.List;
 public interface VideoService {
 
     //save
-    Video save(String video, MultipartFile file);
+    Video save(Video video, MultipartFile file);
 
 
     //get video by id
