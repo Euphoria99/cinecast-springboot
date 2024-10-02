@@ -24,6 +24,9 @@ public class VideoServiceImpl implements VideoService {
     @Value("${files.video}")
     String DIR;
 
+    @Value("${files.video.hsl}")
+    String HSL_DIR;
+
     private VideoRepository videoRepository;
 
     public VideoServiceImpl(VideoRepository videoRepository) {
@@ -34,12 +37,24 @@ public class VideoServiceImpl implements VideoService {
     public void init(){
 
         File file = new File(DIR);
+
         if(!file.exists()){
                 file.mkdir();
             System.out.println("Folder Created!");
         }else {
             System.out.println("Folder exists!");
         }
+
+        File  hsl_file = new File(HSL_DIR);
+
+
+        try {
+            Files.createDirectories(Paths.get(HSL_DIR));
+            System.out.println("HSL folder created");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
     }
 
     @Override
@@ -93,5 +108,10 @@ public class VideoServiceImpl implements VideoService {
     @Override
     public List<Video> getAll() {
         return videoRepository.findAll();
+    }
+
+    @Override
+    public String processVideo(String videoId, MultipartFile file) {
+        return "";
     }
 }

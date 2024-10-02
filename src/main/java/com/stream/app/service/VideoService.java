@@ -4,6 +4,7 @@ import com.stream.app.entities.Video;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.file.Path;
 import java.util.List;
 
 
@@ -21,4 +22,6 @@ public interface VideoService {
 
     //get all video
     List<Video> getAll();
+
+    String  processVideo(String videoId, MultipartFile file);
 }
