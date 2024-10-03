@@ -4,6 +4,7 @@ import com.stream.app.entities.Video;
 import com.stream.app.repositories.VideoRepository;
 import com.stream.app.service.VideoService;
 import jakarta.annotation.PostConstruct;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -24,8 +25,8 @@ public class VideoServiceImpl implements VideoService {
     @Value("${files.video}")
     String DIR;
 
-    @Value("${files.video.hsl}")
-    String HSL_DIR;
+    @Value("${files.video.hls}")
+    String HLS_DIR;
 
     private VideoRepository videoRepository;
 
@@ -45,12 +46,12 @@ public class VideoServiceImpl implements VideoService {
             System.out.println("Folder exists!");
         }
 
-        File  hsl_file = new File(HSL_DIR);
+        File  hls_file = new File(HLS_DIR);
 
 
         try {
-            Files.createDirectories(Paths.get(HSL_DIR));
-            System.out.println("HSL folder created");
+            Files.createDirectories(Paths.get(HLS_DIR));
+            System.out.println("HLS folder created");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -58,45 +59,55 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
+    @Transactional
     public Video save(Video video, MultipartFile file) {
-
-
+        Path path = null;
         try {
+            // File upload logic
             String fileName = file.getOriginalFilename();
             String contentType = file.getContentType();
             InputStream inputStream = file.getInputStream();
 
-
-            //file path
+            // Clean file path and folder name
             String cleanFileName = StringUtils.cleanPath(fileName);
-
-            //folder path
             String cleanFolder = StringUtils.cleanPath(DIR);
 
-            //folder path with file name
-            Path path = Paths.get(cleanFolder, cleanFileName);
+            // Folder path with file name
+            path = Paths.get(cleanFolder, cleanFileName);
 
-            System.out.println("The path" + path);
+            System.out.println("The path: " + path);
 
-            //copy file to folder
+            // Copy file to folder
             Files.copy(inputStream, path, StandardCopyOption.REPLACE_EXISTING);
 
-            //video meta data
+            // Set video metadata
             video.setContentType(contentType);
             video.setFilePath(path.toString());
 
-            return videoRepository.save(video);
-            //metadata save
-        } catch(IOException e){
-            e.printStackTrace();
-            return  null;
-        }
+            videoRepository.save(video);
 
+            // Process the video (this could throw an exception)
+            processVideo(video.getVideoId());
+
+            // Save metadata only after successful processing
+            return video;
+        } catch (IOException | RuntimeException e) {
+            // Handle exception, roll back, and delete the partially saved file if needed
+            if (path != null) {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException ioException) {
+                    ioException.printStackTrace();
+                }
+            }
+            throw new RuntimeException("Video processing failed. Metadata not saved.", e);
+        }
     }
+
 
     @Override
     public Video get(String videoId) {
-        Video video = videoRepository.findById(videoId).orElseThrow(() -> new RuntimeException("Video not found!!"));
+        Video video = videoRepository.findById(videoId).orElseThrow(() -> new RuntimeException("video not found"));
         return video;
     }
 
@@ -111,7 +122,39 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
-    public String processVideo(String videoId, MultipartFile file) {
-        return "";
+    public String processVideo(String videoId) {
+
+        Video video = this.get(videoId);
+        String filePath = video.getFilePath();
+
+        Path videoPath = Paths.get(filePath);
+
+        try{
+            Path outputPath= Paths.get(HLS_DIR,videoId);
+            Files.createDirectories(outputPath);
+
+            String ffmpegCmd = String.format(
+                    "ffmpeg -i \"%s\" -c:v libx264 -c:a aac -strict -2 -f hls -hls_time 10 -hls_list_size 0 -hls_segment_filename \"%s/segment_%%3d.ts\"  \"%s/master.m3u8\" ",
+                    videoPath, outputPath, outputPath
+            );
+
+            System.out.println(ffmpegCmd);
+            //file this command
+            ProcessBuilder processBuilder = new ProcessBuilder("/bin/bash", "-c", ffmpegCmd);
+            processBuilder.inheritIO();
+            Process process = processBuilder.start();
+            int exit = process.waitFor();
+            if (exit != 0) {
+                throw new RuntimeException("video processing failed!!");
+            }
+
+            return videoId;
+
+        } catch (IOException ex) {
+            throw new RuntimeException("Video processing fail!!");
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
     }
 }
