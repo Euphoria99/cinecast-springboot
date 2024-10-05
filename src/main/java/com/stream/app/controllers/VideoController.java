@@ -189,6 +189,7 @@ public class VideoController {
     @Value("${files.video.hls}")
     private String HLS_DIR;
 
+    //serve hls playlist
     @GetMapping("/{videoId}/master.m3u8")
     public ResponseEntity<Resource> streamMaster(
             @PathVariable String videoId
@@ -206,6 +207,26 @@ public class VideoController {
         return ResponseEntity
                 .ok()
                 .header(HttpHeaders.CONTENT_TYPE, "application/vnd.apple.mpegurl")
+                .body(resource);
+    }
+
+    //serve the segments
+
+    @GetMapping("/{videoId}/{segment}.ts")
+    public ResponseEntity<Resource> serveSegments(
+            @PathVariable String videoId,
+            @PathVariable String segment
+    ){
+        Path path = Paths.get(HLS_DIR,videoId,segment+".ts");
+        if(!Files.exists(path)){
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
+
+        Resource resource = new FileSystemResource(path);
+
+        return ResponseEntity
+                .ok()
+                .header(HttpHeaders.CONTENT_TYPE, "video/mp2t")
                 .body(resource);
     }
 
