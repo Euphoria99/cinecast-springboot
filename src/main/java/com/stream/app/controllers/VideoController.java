@@ -210,6 +210,28 @@ public class VideoController {
                 .body(resource);
     }
 
+    //serve hls playlist
+    @GetMapping("/{videoId}/{quality}.m3u8")
+    public ResponseEntity<Resource> streamQuality(
+            @PathVariable String videoId,
+            @PathVariable String quality
+    ){
+        Path path = Paths.get(HLS_DIR,videoId,quality +".m3u8");
+
+        System.out.println("The quality path->" + path);
+
+        if(!Files.exists(path)){
+            return  new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
+
+        Resource resource = new FileSystemResource(path);
+
+        return ResponseEntity
+                .ok()
+                .header(HttpHeaders.CONTENT_TYPE, "application/vnd.apple.mpegurl")
+                .body(resource);
+    }
+
     //serve the segments
 
     @GetMapping("/{videoId}/{segment}.ts")

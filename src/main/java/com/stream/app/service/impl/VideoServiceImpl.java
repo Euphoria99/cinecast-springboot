@@ -123,38 +123,65 @@ public class VideoServiceImpl implements VideoService {
 
     @Override
     public String processVideo(String videoId) {
-
         Video video = this.get(videoId);
         String filePath = video.getFilePath();
 
         Path videoPath = Paths.get(filePath);
 
-        try{
-            Path outputPath= Paths.get(HLS_DIR,videoId);
+        try {
+            Path outputPath = Paths.get(HLS_DIR, videoId);
             Files.createDirectories(outputPath);
 
-            String ffmpegCmd = String.format(
-                    "ffmpeg -i \"%s\" -c:v libx264 -c:a aac -strict -2 -f hls -hls_time 10 -hls_list_size 0 -hls_segment_filename \"%s/segment_%%3d.ts\"  \"%s/master.m3u8\" ",
-                    videoPath, outputPath, outputPath
-            );
+            // Define qualities and their resolutions
+            String[][] qualities = {
+                    {"360p", "640x360", "800000"},
+                    {"480p", "854x480", "1400000"},
+                    {"720p", "1280x720", "2800000"},
+                    {"1080p", "1920x1080", "5000000"}
+            };
 
-            System.out.println(ffmpegCmd);
-            //file this command
-            ProcessBuilder processBuilder = new ProcessBuilder("/bin/bash", "-c", ffmpegCmd);
-            processBuilder.inheritIO();
-            Process process = processBuilder.start();
-            int exit = process.waitFor();
-            if (exit != 0) {
-                throw new RuntimeException("video processing failed!!");
+            // Create a master playlist command
+            StringBuilder masterPlaylistCmd = new StringBuilder("#EXTM3U\n");
+
+            // Build the FFmpeg commands for each quality
+            for (String[] quality : qualities) {
+                String qualityName = quality[0];
+                String resolution = quality[1];
+                String bandwidth = quality[2];
+                String segmentFileName = String.format("segment_%s_%%03d.ts", qualityName);
+                String playlistFileName = String.format("%s.m3u8", qualityName);
+
+                // Command to generate HLS for the current quality
+                String ffmpegCmd = String.format(
+                        "ffmpeg -i \"%s\" -vf \"scale=%s\" -c:v libx264 -c:a aac -strict -2 -f hls " +
+                                "-hls_time 10 -hls_list_size 0 -hls_segment_filename \"%s/%s\" \"%s/%s\"",
+                        videoPath, resolution, outputPath, segmentFileName, outputPath, playlistFileName
+                );
+
+                // Append to the master playlist content
+                masterPlaylistCmd.append(String.format("#EXT-X-STREAM-INF:BANDWIDTH=%s,RESOLUTION=%s\n", bandwidth, resolution));
+                masterPlaylistCmd.append(playlistFileName).append("\n");
+
+                // Execute the FFmpeg command
+                ProcessBuilder processBuilder = new ProcessBuilder("/bin/bash", "-c", ffmpegCmd);
+                processBuilder.inheritIO();
+                Process process = processBuilder.start();
+                int exit = process.waitFor();
+                if (exit != 0) {
+                    throw new RuntimeException("Video processing failed for quality " + qualityName);
+                }
             }
+
+            // Write the master playlist file
+            Path masterPlaylistPath = outputPath.resolve("master.m3u8");
+            Files.write(masterPlaylistPath, masterPlaylistCmd.toString().getBytes());
 
             return videoId;
 
         } catch (IOException ex) {
-            throw new RuntimeException("Video processing fail!!");
+            throw new RuntimeException("Video processing failed!", ex);
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Video processing interrupted!", e);
         }
-
     }
 }
